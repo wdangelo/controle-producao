@@ -1,0 +1,89 @@
+// Prisma schema for Controle de Produção
+// Banco padrão: PostgreSQL (ajuste DATABASE_URL no .env)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  nome           String
+  email          String    @unique
+  senha          String
+  createdAt      DateTime  @default(now()) @map("data_criacao")
+  updatedAt      DateTime  @updatedAt @map("data_alteracao")
+  auditLogs      AuditLog[]
+}
+
+model Operator {
+  id             String    @id @default(uuid())
+  nome           String
+  codigo         String    @unique @map("codigo_operador")
+  createdAt      DateTime  @default(now()) @map("data_criacao")
+  updatedAt      DateTime  @updatedAt @map("data_alteracao")
+  sessions       OperationSession[]
+  counts         ProductionCount[]
+}
+
+model Service {
+  id                    String   @id @default(uuid())
+  cliente               String
+  descricao_servico     String
+  observacoes           String?
+  data_previsao_preparo DateTime
+  ativo                 Boolean  @default(true)
+  createdAt             DateTime @default(now()) @map("data_criacao")
+  updatedAt             DateTime @updatedAt @map("data_alteracao")
+  pecas                 Piece[]
+  sessions              OperationSession[]
+}
+
+model Piece {
+  id                 String  @id @default(uuid())
+  nome               String
+  quantidade_prevista Int
+  tipo_metal         String
+  marca_material     String
+  serviceId          String
+  service            Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  counts             ProductionCount[]
+}
+
+model OperationSession {
+  id               String   @id @default(uuid())
+  operatorId       String
+  serviceId        String
+  data_inicio      DateTime
+  data_inicio_almoco DateTime?
+  data_fim_almoco  DateTime?
+  data_fim         DateTime?
+  operator         Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  service          Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model ProductionCount {
+  id          String   @id @default(uuid())
+  pieceId     String
+  operatorId  String
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  piece       Piece    @relation(fields: [pieceId], references: [id], onDelete: Cascade)
+  operator    Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  entity      String
+  entityId    String?
+  before      String?
+  after       String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
