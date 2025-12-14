@@ -33,11 +33,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy necessary files
 # Copy necessary files
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
@@ -45,9 +47,23 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+# Create entrypoint script inline to avoid Windows CRLF issues
+RUN echo '#!/bin/sh' > /usr/local/bin/docker-entrypoint.sh && \
+    echo 'set -e' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo '' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'echo "🔄 Aguardando banco de dados..."' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'sleep 5' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo '' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'echo "🗄️ Rodando migrations..."' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'cd /app' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'node_modules/.bin/prisma migrate deploy' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo '' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'echo "🌱 Populando banco (seed)..."' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'node_modules/.bin/tsx prisma/seed.ts || echo "⚠️ Seed falhou ou já foi executado"' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo '' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'echo "🚀 Iniciando aplicação..."' >> /usr/local/bin/docker-entrypoint.sh && \
+    echo 'exec node server.js' >> /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh && \
     chown -R nextjs:nodejs /app
 
 USER nextjs

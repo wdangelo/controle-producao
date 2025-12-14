@@ -2,7 +2,8 @@
 // Banco padrão: PostgreSQL (ajuste DATABASE_URL no .env)
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -67,13 +68,16 @@ model OperationSession {
 }
 
 model ProductionCount {
-  id          String   @id @default(uuid())
-  pieceId     String
-  operatorId  String
-  quantity    Int      @default(1)
-  createdAt   DateTime @default(now())
-  piece       Piece    @relation(fields: [pieceId], references: [id], onDelete: Cascade)
-  operator    Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  id                       String    @id @default(uuid())
+  pieceId                  String
+  operatorId               String
+  quantity                 Int       @default(1)
+  createdAt                DateTime  @default(now())
+  inicio_producao          DateTime?
+  fim_producao             DateTime?
+  tempo_producao_segundos  Int?
+  piece                    Piece     @relation(fields: [pieceId], references: [id], onDelete: Cascade)
+  operator                 Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {

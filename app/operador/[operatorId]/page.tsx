@@ -39,7 +39,7 @@ export default async function OperatorServices({ params }: { params: { operatorI
                 )}
 
                 <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                  <span className="bg-slate-100 px-2 py-1 rounded">📅 Previsão: {s.data_previsao_entrega ? new Date(s.data_previsao_entrega).toLocaleDateString('pt-BR') : '—'}</span>
+                  <span className="bg-slate-100 px-2 py-1 rounded">📅 Previsão: {s.data_previsao_preparo ? new Date(s.data_previsao_preparo).toLocaleDateString('pt-BR') : '—'}</span>
                   <span className="bg-slate-100 px-2 py-1 rounded">⚙️ Status: Ativo</span>
                 </div>
               </Link>

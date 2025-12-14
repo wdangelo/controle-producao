@@ -10,6 +10,7 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
   const [myTotals, setMyTotals] = useState<Record<string, number>>({}) // totais apenas deste operador
   const [running, setRunning] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [productionInProgress, setProductionInProgress] = useState<Record<string, any>>({}) // controla peças em produção
 
   const formatDateTime = (date?: string | null) => {
     if (!date) return ''
@@ -57,20 +58,45 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
     setMyTotals(mine)
   }
 
+  const checkProductionStatus = async () => {
+    // Verifica se há produções em andamento para cada peça
+    if (!service?.pecas) return
+    
+    const statusMap: Record<string, any> = {}
+    await Promise.all(
+      service.pecas.map(async (pc: any) => {
+        const res = await fetch(`/api/production/counts?pieceId=${pc.id}&operatorId=${operatorId}`)
+        const data = await res.json()
+        if (data) {
+          statusMap[pc.id] = data
+        }
+      })
+    )
+    setProductionInProgress(statusMap)
+  }
+
   useEffect(() => {
     loadService()
     loadSession()
     loadTotals()
   }, [])
 
+  // Verifica status de produção quando o serviço é carregado
+  useEffect(() => {
+    if (service?.pecas) {
+      checkProductionStatus()
+    }
+  }, [service])
+
   // Sincronização em tempo real: polling a cada 1 segundo
   useEffect(() => {
     if (!running) return
     const interval = setInterval(() => {
       loadTotals()
+      checkProductionStatus()
     }, 1000)
     return () => clearInterval(interval)
-  }, [running])
+  }, [running, service])
 
   const start = async () => {
     const res = await fetch('/api/production/sessions', {
@@ -111,14 +137,40 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
     await loadSession()
   }
 
-  const addOne = async (pieceId: string) => {
-    await fetch('/api/production/counts', {
-      method: 'POST',
-      body: JSON.stringify({ pieceId, operatorId, quantity: 1 }),
-      headers: { 'Content-Type': 'application/json' }
-    })
-    // Carrega totais imediatamente para feedback
+  const handleProductionClick = async (pieceId: string) => {
+    const inProgress = productionInProgress[pieceId]
+
+    if (!inProgress) {
+      // Inicia a produção
+      await fetch('/api/production/counts', {
+        method: 'POST',
+        body: JSON.stringify({ pieceId, operatorId, action: 'start' }),
+        headers: { 'Content-Type': 'application/json' }
+      })
+    } else {
+      // Finaliza a produção
+      await fetch('/api/production/counts', {
+        method: 'POST',
+        body: JSON.stringify({ pieceId, operatorId, action: 'finish' }),
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Atualiza status e totais
+    await checkProductionStatus()
     await loadTotals()
+  }
+
+  const formatElapsedTime = (startTime: string) => {
+    const start = new Date(startTime).getTime()
+    const now = Date.now()
+    const seconds = Math.floor((now - start) / 1000)
+    
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
   const saldo = useMemo(() => {
@@ -165,37 +217,60 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
       <div>
         <h2 className="text-2xl font-bold mb-4">📦 Peças da Produção</h2>
         <div className="grid md:grid-cols-2 gap-4">
-          {service?.pecas?.map((pc: any) => (
-            <div key={pc.id} className="border-2 border-blue-400 rounded-lg p-5 bg-gradient-to-br from-blue-50 to-white flex flex-col items-center justify-between shadow-md hover:shadow-lg transition-shadow">
-              <div className="text-center w-full mb-4">
-                <div className="text-3xl font-bold text-gray-800 mb-2">{pc.nome}</div>
-                <div className="space-y-2">
-                  <div className="text-2xl">
-                    <span className="font-bold text-green-600">Previsto: {pc.quantidade_prevista}</span>
-                  </div>
-                  <div className="text-2xl">
-                    <span className="font-bold text-blue-600">Produzido: {totals[pc.id] || 0}</span>
-                  </div>
-                  <div className="text-xl">
-                    <span className="font-semibold text-indigo-600">Produzido Operador: {myTotals[pc.id] || 0}</span>
-                  </div>
-                  <div className="text-2xl">
-                    <span className="font-bold text-red-600">Saldo: {(pc.quantidade_prevista || 0) - (totals[pc.id] || 0)}</span>
-                  </div>
-                </div>
-                <div className="text-sm text-slate-600 mt-3">
-                  Metal: {pc.tipo_metal} | Marca: {pc.marca_material}
-                </div>
-              </div>
-              <Button
-                className="text-2xl py-4 px-8 font-bold"
-                onClick={() => addOne(pc.id)}
-                disabled={!running || paused}
+          {service?.pecas?.map((pc: any) => {
+            const inProgress = productionInProgress[pc.id]
+            const isProducing = !!inProgress
+            
+            return (
+              <div 
+                key={pc.id} 
+                className={`border-2 rounded-lg p-5 flex flex-col items-center justify-between shadow-md hover:shadow-lg transition-all ${
+                  isProducing 
+                    ? 'border-orange-500 bg-gradient-to-br from-orange-50 to-yellow-50 animate-pulse' 
+                    : 'border-blue-400 bg-gradient-to-br from-blue-50 to-white'
+                }`}
               >
-                + 1
-              </Button>
-            </div>
-          ))}
+                <div className="text-center w-full mb-4">
+                  <div className="text-3xl font-bold text-gray-800 mb-2">{pc.nome}</div>
+                  
+                  {isProducing && (
+                    <div className="bg-orange-500 text-white px-4 py-2 rounded-full mb-3 font-bold text-lg">
+                      ⏱️ EM PRODUÇÃO: {formatElapsedTime(inProgress.inicio_producao)}
+                    </div>
+                  )}
+                  
+                  <div className="space-y-2">
+                    <div className="text-2xl">
+                      <span className="font-bold text-green-600">Previsto: {pc.quantidade_prevista}</span>
+                    </div>
+                    <div className="text-2xl">
+                      <span className="font-bold text-blue-600">Produzido: {totals[pc.id] || 0}</span>
+                    </div>
+                    <div className="text-xl">
+                      <span className="font-semibold text-indigo-600">Produzido Operador: {myTotals[pc.id] || 0}</span>
+                    </div>
+                    <div className="text-2xl">
+                      <span className="font-bold text-red-600">Saldo: {(pc.quantidade_prevista || 0) - (totals[pc.id] || 0)}</span>
+                    </div>
+                  </div>
+                  <div className="text-sm text-slate-600 mt-3">
+                    Metal: {pc.tipo_metal} | Marca: {pc.marca_material}
+                  </div>
+                </div>
+                <Button
+                  className={`text-2xl py-4 px-8 font-bold ${
+                    isProducing 
+                      ? 'bg-green-600 hover:bg-green-700' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                  onClick={() => handleProductionClick(pc.id)}
+                  disabled={!running || paused}
+                >
+                  {isProducing ? '✓ Finalizar' : '▶ Iniciar'}
+                </Button>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
