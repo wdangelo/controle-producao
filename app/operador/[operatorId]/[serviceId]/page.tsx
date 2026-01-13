@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Input } from '@/components/ui'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 export default function OperadorSessao({ params }: { params: { operatorId: string, serviceId: string } }) {
   const { operatorId, serviceId } = params
