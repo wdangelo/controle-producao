@@ -10,6 +10,26 @@ interface ProducaoItem {
   piecesDetail: { pieceName: string; qty: number }[]
 }
 
+interface TimeReportSummary {
+  pieceId: string
+  pieceName: string
+  serviceName: string
+  count: number
+  avgSeconds: number
+  minSeconds: number
+  maxSeconds: number
+  avgFormatted: string
+  minFormatted: string
+  maxFormatted: string
+  operators: {
+    operatorId: string
+    operatorName: string
+    count: number
+    avgSeconds: number
+    avgFormatted: string
+  }[]
+}
+
 export default function MetricsPage() {
   const [data, setData] = useState<ProducaoItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -17,6 +37,27 @@ export default function MetricsPage() {
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [operatorFilter, setOperatorFilter] = useState<string>('')
+  const [timeReport, setTimeReport] = useState<TimeReportSummary[]>([])
+  const [loadingTime, setLoadingTime] = useState(true)
+
+  const loadTimeReport = async () => {
+    setLoadingTime(true)
+    try {
+      const params = new URLSearchParams()
+      if (startDate) params.append('startDate', startDate)
+      if (endDate) params.append('endDate', endDate)
+      if (operatorFilter) params.append('operatorId', operatorFilter)
+
+      const res = await fetch(`/api/production/time-report?${params.toString()}`)
+      const data = await res.json()
+      setTimeReport(data.summary || [])
+    } catch (err) {
+      console.error('Erro ao carregar relatório de tempos:', err)
+    }
+    setLoadingTime(false)
+  }
+
+  const [completedServices, setCompletedServices] = useState<any[]>([])
 
   const load = async () => {
     setLoading(true)
@@ -24,6 +65,10 @@ export default function MetricsPage() {
       // Buscar serviços
       const servRes = await fetch('/api/services')
       const services = await servRes.json()
+
+      // Filtrar serviços concluídos
+      const completed = services.filter((s: any) => s.concluido)
+      setCompletedServices(completed)
 
       // Buscar operadores
       const opRes = await fetch('/api/operators')
@@ -79,7 +124,10 @@ export default function MetricsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [startDate, endDate, operatorFilter])
+  useEffect(() => { 
+    load()
+    loadTimeReport()
+  }, [startDate, endDate, operatorFilter])
 
   const totalGeral = data.reduce((s, i) => s + i.totalProduzido, 0)
   const mediaOperador = data.length > 0 ? (totalGeral / [...new Set(data.map(d => d.operatorId))].length).toFixed(1) : 0
@@ -197,7 +245,7 @@ export default function MetricsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
           <p className="text-sm text-blue-700 font-semibold">Total Produzido</p>
           <p className="text-3xl font-bold text-blue-900">{totalGeral}</p>
@@ -213,6 +261,126 @@ export default function MetricsPage() {
           <p className="text-3xl font-bold text-purple-900">{mediaOperador}</p>
           <p className="text-xs text-purple-600 mt-1">Peças produzidas</p>
         </div>
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
+          <p className="text-sm text-amber-700 font-semibold">Serviços Concluídos</p>
+          <p className="text-3xl font-bold text-amber-900">{completedServices.length}</p>
+          <p className="text-xs text-amber-600 mt-1">100% das peças produzidas</p>
+        </div>
+      </div>
+
+      {/* Serviços Concluídos */}
+      {completedServices.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-2xl font-bold mb-4">✅ Serviços Concluídos</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {completedServices.map((service) => {
+              const tempoTotal = service.tempo_total_producao_segundos || 0
+              const tempoPreparo = service.tempo_preparo_segundos || 0
+              const tempoTotalComPreparo = tempoTotal + tempoPreparo
+              
+              const formatTempo = (seconds: number) => {
+                const hours = Math.floor(seconds / 3600)
+                const minutes = Math.floor((seconds % 3600) / 60)
+                return hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`
+              }
+              
+              const dataConclusao = service.data_conclusao 
+                ? new Date(service.data_conclusao).toLocaleDateString('pt-BR')
+                : '-'
+
+              return (
+                <div key={service.id} className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-5 shadow-md">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-bold text-green-900 text-lg">{service.cliente}</h3>
+                      <p className="text-sm text-green-700">{service.descricao_servico}</p>
+                    </div>
+                    <span className="text-3xl">✅</span>
+                  </div>
+                  <div className="bg-white/60 rounded-lg p-3 space-y-2">
+                    {tempoPreparo > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-slate-600">🔧 Tempo Preparo:</span>
+                        <span className="font-semibold text-amber-700">{formatTempo(tempoPreparo)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-600">⏱️ Tempo Produção:</span>
+                      <span className="font-semibold text-blue-700">{formatTempo(tempoTotal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-t pt-2">
+                      <span className="text-sm text-slate-700 font-bold">⏱️ Tempo Total:</span>
+                      <span className="font-bold text-green-700 text-lg">{formatTempo(tempoTotalComPreparo)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-600">📅 Concluído em:</span>
+                      <span className="font-semibold text-slate-700">{dataConclusao}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-600">📦 Peças:</span>
+                      <span className="font-semibold text-slate-700">{service.pecas?.length || 0} tipos</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tempos de Produção */}
+      <div className="mt-8">
+        <h2 className="text-2xl font-bold mb-4">⏱️ Tempos de Produção por Peça</h2>
+        {loadingTime ? (
+          <div className="p-8 text-center text-slate-600">Carregando dados de tempo...</div>
+        ) : timeReport.length === 0 ? (
+          <div className="p-8 text-center text-slate-600 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-amber-700">Nenhum registro de tempo de produção encontrado.</p>
+            <p className="text-sm text-amber-600 mt-2">Os tempos são registrados quando o operador inicia e finaliza a produção de cada peça.</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {timeReport.map((item) => (
+              <div key={item.pieceId} className="bg-white border rounded-lg p-4 shadow-sm hover:shadow-md transition">
+                <div className="mb-3">
+                  <h3 className="font-bold text-slate-900 text-lg">{item.pieceName}</h3>
+                  <p className="text-xs text-slate-500 truncate">{item.serviceName}</p>
+                  <p className="text-sm text-blue-600 mt-1">{item.count} produções registradas</p>
+                </div>
+                <div className="space-y-2 bg-slate-50 rounded p-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">⏱️ Tempo Médio:</span>
+                    <span className="font-bold text-green-600">{item.avgFormatted}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">⚡ Mais Rápido:</span>
+                    <span className="font-semibold text-blue-600">{item.minFormatted}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">🐢 Mais Lento:</span>
+                    <span className="font-semibold text-orange-600">{item.maxFormatted}</span>
+                  </div>
+                </div>
+                {item.operators.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Por Operador:</p>
+                    <div className="space-y-1">
+                      {item.operators.slice(0, 3).map((op) => (
+                        <div key={op.operatorId} className="flex justify-between text-xs">
+                          <span className="text-slate-700 truncate flex-1">{op.operatorName}</span>
+                          <span className="font-semibold text-slate-900 ml-2">{op.avgFormatted}</span>
+                        </div>
+                      ))}
+                      {item.operators.length > 3 && (
+                        <p className="text-xs text-slate-500 italic">+{item.operators.length - 3} operadores</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabela de Detalhes */}

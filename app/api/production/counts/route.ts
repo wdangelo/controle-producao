@@ -1,5 +1,54 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { calculateTotalServiceTime } from '@/lib/time-calculations'
+
+// Função auxiliar para verificar e marcar conclusão do serviço
+async function checkAndCompleteService(serviceId: string) {
+  // Buscar todas as peças do serviço
+  const service = await prisma.service.findUnique({
+    where: { id: serviceId },
+    include: {
+      pecas: true,
+      sessions: true
+    }
+  })
+
+  if (!service || service.concluido) return
+
+  // Calcular total previsto e produzido
+  let totalPrevisto = 0
+  let totalProduzido = 0
+
+  for (const piece of service.pecas) {
+    totalPrevisto += piece.quantidade_prevista
+
+    // Somar quantidade produzida desta peça
+    const produced = await prisma.productionCount.aggregate({
+      where: { pieceId: piece.id },
+      _sum: { quantity: true }
+    })
+
+    totalProduzido += produced._sum.quantity || 0
+  }
+
+  // Se todas as peças foram produzidas, marcar como concluído
+  if (totalProduzido >= totalPrevisto) {
+    // Calcular tempo total de produção
+    const totalSeconds = calculateTotalServiceTime(service.sessions)
+
+    // Atualizar serviço como concluído
+    await prisma.service.update({
+      where: { id: serviceId },
+      data: {
+        concluido: true,
+        data_conclusao: new Date(),
+        tempo_total_producao_segundos: totalSeconds
+      }
+    })
+
+    console.log(`✅ Serviço ${service.cliente} concluído! Tempo total: ${totalSeconds}s`)
+  }
+}
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -50,6 +99,16 @@ export async function POST(req: Request) {
       }
     })
 
+    // Buscar serviceId da peça e verificar conclusão
+    const piece = await prisma.piece.findUnique({
+      where: { id: pieceId },
+      select: { serviceId: true }
+    })
+
+    if (piece?.serviceId) {
+      await checkAndCompleteService(piece.serviceId)
+    }
+
     return NextResponse.json(count, { status: 200 })
   }
 
@@ -57,6 +116,17 @@ export async function POST(req: Request) {
   const count = await prisma.productionCount.create({ 
     data: { pieceId, operatorId, quantity: quantity ?? 1 } 
   })
+
+  // Buscar serviceId da peça e verificar conclusão
+  const piece = await prisma.piece.findUnique({
+    where: { id: pieceId },
+    select: { serviceId: true }
+  })
+
+  if (piece?.serviceId) {
+    await checkAndCompleteService(piece.serviceId)
+  }
+
   return NextResponse.json(count, { status: 201 })
 }
 

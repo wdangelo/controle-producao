@@ -20,7 +20,8 @@ export const pieceSchema = z.object({
   nome: z.string().min(1),
   quantidade_prevista: z.number().int().nonnegative(),
   tipo_metal: z.string().min(1),
-  marca_material: z.string().min(1)
+  marca_material: z.string().min(1),
+  valor_materia_prima: z.number().nonnegative().optional()
 })
 
 export const serviceSchema = z.object({

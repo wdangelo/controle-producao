@@ -32,16 +32,24 @@ model Operator {
 }
 
 model Service {
-  id                    String   @id @default(uuid())
-  cliente               String
-  descricao_servico     String
-  observacoes           String?
-  data_previsao_preparo DateTime
-  ativo                 Boolean  @default(true)
-  createdAt             DateTime @default(now()) @map("data_criacao")
-  updatedAt             DateTime @updatedAt @map("data_alteracao")
-  pecas                 Piece[]
-  sessions              OperationSession[]
+  id                            String   @id @default(uuid())
+  cliente                       String
+  descricao_servico             String
+  observacoes                   String?
+  data_previsao_preparo         DateTime
+  ativo                         Boolean  @default(true)
+  concluido                     Boolean  @default(false)
+  data_conclusao                DateTime?
+  data_inicio_preparo           DateTime?
+  data_fim_preparo              DateTime?
+  tempo_preparo_segundos        Int?
+  tempo_total_producao_segundos Int?
+  valor_refugo                  Float?
+  createdAt                     DateTime @default(now()) @map("data_criacao")
+  updatedAt                     DateTime @updatedAt @map("data_alteracao")
+  pecas                         Piece[]
+  sessions                      OperationSession[]
+  rawMaterials                  ServiceRawMaterial[]
 }
 
 model Piece {
@@ -50,6 +58,7 @@ model Piece {
   quantidade_prevista Int
   tipo_metal         String
   marca_material     String
+  valor_materia_prima Float?
   serviceId          String
   service            Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   counts             ProductionCount[]
@@ -90,4 +99,25 @@ model AuditLog {
   after       String?
   createdAt   DateTime @default(now())
   actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
+
+model RawMaterial {
+  id        String               @id @default(uuid())
+  nome      String
+  valor     Float
+  createdAt DateTime             @default(now()) @map("data_criacao")
+  updatedAt DateTime             @updatedAt @map("data_alteracao")
+  services  ServiceRawMaterial[]
+}
+
+model ServiceRawMaterial {
+  id             String      @id @default(uuid())
+  serviceId      String
+  rawMaterialId  String
+  quantidade     Int         @default(1)
+  createdAt      DateTime    @default(now()) @map("data_criacao")
+  service        Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  rawMaterial    RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, rawMaterialId])
 }

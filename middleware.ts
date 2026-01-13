@@ -7,8 +7,8 @@ export function middleware(req: NextRequest) {
     // Atenção: Middleware roda em Edge Runtime, evitar libs Node.
     // Aqui validamos apenas a presença do cookie para liberar acesso.
     if (!token) {
-      const url = req.nextUrl.clone()
-      url.pathname = '/'
+      // Força usar o host do request original para o redirect
+      const url = new URL('/', req.url)
       return NextResponse.redirect(url)
     }
   }

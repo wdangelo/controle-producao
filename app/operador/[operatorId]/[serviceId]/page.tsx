@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
 
 export default function OperadorSessao({ params }: { params: { operatorId: string, serviceId: string } }) {
   const { operatorId, serviceId } = params
@@ -11,6 +12,11 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
   const [running, setRunning] = useState(false)
   const [paused, setPaused] = useState(false)
   const [productionInProgress, setProductionInProgress] = useState<Record<string, any>>({}) // controla peças em produção
+  const [preparoIniciado, setPreparoIniciado] = useState(false)
+  const [preparoFinalizado, setPreparoFinalizado] = useState(false)
+  const [preparoInfo, setPreparoInfo] = useState<any>(null)
+  const [valorRefugo, setValorRefugo] = useState('')
+  const [showRefugoForm, setShowRefugoForm] = useState(false)
 
   const formatDateTime = (date?: string | null) => {
     if (!date) return ''
@@ -19,7 +25,25 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
 
   const loadService = async () => {
     const res = await fetch(`/api/services/${serviceId}`)
-    setService(await res.json())
+    const svc = await res.json()
+    setService(svc)
+    
+    // Verifica status do preparo
+    setPreparoIniciado(!!svc.data_inicio_preparo)
+    setPreparoFinalizado(!!svc.data_fim_preparo)
+    
+    // Inicializa o valor do refugo se já existir
+    if (svc.valor_refugo !== null && svc.valor_refugo !== undefined) {
+      setValorRefugo(svc.valor_refugo.toString())
+    }
+  }
+
+  const loadPreparoStatus = async () => {
+    const res = await fetch(`/api/production/preparation?serviceId=${serviceId}`)
+    const data = await res.json()
+    setPreparoInfo(data)
+    setPreparoIniciado(data.preparoIniciado)
+    setPreparoFinalizado(data.preparoFinalizado)
   }
 
   const loadSession = async () => {
@@ -77,6 +101,7 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
 
   useEffect(() => {
     loadService()
+    loadPreparoStatus()
     loadSession()
     loadTotals()
   }, [])
@@ -137,6 +162,38 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
     await loadSession()
   }
 
+  const iniciarPreparo = async () => {
+    const res = await fetch('/api/production/preparation', {
+      method: 'POST',
+      body: JSON.stringify({ serviceId, action: 'start' }),
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (res.ok) {
+      await loadPreparoStatus()
+      await loadService()
+    } else {
+      const error = await res.json()
+      alert(error.error || 'Erro ao iniciar preparo')
+    }
+  }
+
+  const finalizarPreparo = async () => {
+    const res = await fetch('/api/production/preparation', {
+      method: 'POST',
+      body: JSON.stringify({ serviceId, action: 'finish' }),
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (res.ok) {
+      await loadPreparoStatus()
+      await loadService()
+    } else {
+      const error = await res.json()
+      alert(error.error || 'Erro ao finalizar preparo')
+    }
+  }
+
   const handleProductionClick = async (pieceId: string) => {
     const inProgress = productionInProgress[pieceId]
 
@@ -159,6 +216,29 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
     // Atualiza status e totais
     await checkProductionStatus()
     await loadTotals()
+  }
+
+  const salvarRefugo = async () => {
+    const valor = parseFloat(valorRefugo)
+    
+    if (isNaN(valor) || valor < 0) {
+      alert('Por favor, informe um valor válido (número positivo)')
+      return
+    }
+
+    const res = await fetch(`/api/services/${serviceId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valor_refugo: valor })
+    })
+
+    if (res.ok) {
+      alert('Valor do refugo salvo com sucesso!')
+      setShowRefugoForm(false)
+      await loadService()
+    } else {
+      alert('Erro ao salvar o valor do refugo')
+    }
   }
 
   const formatElapsedTime = (startTime: string) => {
@@ -201,10 +281,65 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
           )}
         </div>
       )}
+
+      {/* Seção de Preparo */}
+      {!preparoFinalizado && (
+        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-400 rounded-lg p-5 shadow-md">
+          <h2 className="text-xl font-bold text-amber-800 mb-3">🔧 Preparo do Serviço</h2>
+          <p className="text-sm text-amber-700 mb-4">
+            Antes de iniciar a produção, registre o tempo de preparo das máquinas e materiais.
+          </p>
+          
+          {!preparoIniciado ? (
+            <Button 
+              onClick={iniciarPreparo}
+              className="bg-amber-600 hover:bg-amber-700 text-lg py-3 px-6"
+            >
+              ▶️ Iniciar Preparo
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-white/60 rounded p-3">
+                <p className="text-sm text-amber-800">
+                  ⏱️ Preparo iniciado em: <span className="font-bold">{formatDateTime(service?.data_inicio_preparo)}</span>
+                </p>
+              </div>
+              <Button 
+                onClick={finalizarPreparo}
+                className="bg-green-600 hover:bg-green-700 text-lg py-3 px-6"
+              >
+                ✅ Finalizar Preparo
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Informação de preparo finalizado */}
+      {preparoFinalizado && service?.tempo_preparo_segundos && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-green-800">✅ Preparo Concluído</h3>
+              <p className="text-sm text-green-700">
+                Tempo de preparo: <span className="font-bold">
+                  {Math.floor(service.tempo_preparo_segundos / 3600)}h {Math.floor((service.tempo_preparo_segundos % 3600) / 60)}min
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="flex flex-wrap gap-2">
         {!running ? (
-          <Button onClick={start}>Iniciar operação</Button>
+          <Button 
+            onClick={start} 
+            disabled={!preparoFinalizado}
+            className={!preparoFinalizado ? 'opacity-50 cursor-not-allowed' : ''}
+          >
+            {preparoFinalizado ? 'Iniciar operação' : '🔒 Finalize o preparo primeiro'}
+          </Button>
         ) : (
           <>
             {!paused && <Button onClick={pause}>Iniciar pausa para almoço</Button>}
@@ -273,6 +408,68 @@ export default function OperadorSessao({ params }: { params: { operatorId: strin
           })}
         </div>
       </div>
+
+      {/* Seção de Refugo - mostra quando o serviço está concluído OU quando não há sessão ativa */}
+      {service && (service.concluido || !running) && (
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-400 rounded-lg p-5 shadow-md">
+          <h2 className="text-xl font-bold text-red-800 mb-3">♻️ Registro de Refugo</h2>
+          
+          {service.valor_refugo !== null && service.valor_refugo !== undefined && !showRefugoForm ? (
+            <div className="space-y-3">
+              <div className="bg-white/60 rounded p-4">
+                <p className="text-lg text-red-800">
+                  💰 Valor do Refugo: <span className="font-bold text-2xl">R$ {service.valor_refugo.toFixed(2)}</span>
+                </p>
+              </div>
+              <Button 
+                onClick={() => setShowRefugoForm(true)}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                ✏️ Editar Valor do Refugo
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-red-700 mb-3">
+                Registre o valor do material refugado/desperdiçado durante a produção.
+              </p>
+              <div className="bg-white rounded-lg p-4 space-y-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Valor do Refugo (R$)
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={valorRefugo}
+                  onChange={(e) => setValorRefugo(e.target.value)}
+                  placeholder="0.00"
+                  className="text-lg"
+                />
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={salvarRefugo}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    💾 Salvar Refugo
+                  </Button>
+                  {showRefugoForm && service.valor_refugo !== null && (
+                    <Button 
+                      onClick={() => {
+                        setShowRefugoForm(false)
+                        setValorRefugo(service.valor_refugo?.toString() || '')
+                      }}
+                      className="bg-gray-500 hover:bg-gray-600"
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

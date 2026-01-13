@@ -19,7 +19,13 @@ export async function POST(req: Request) {
       descricao_servico: s.descricao_servico,
       observacoes: s.observacoes || null,
       data_previsao_preparo: new Date(s.data_previsao_preparo),
-      pecas: { create: s.pecas.map(p => ({ nome: p.nome, quantidade_prevista: p.quantidade_prevista, tipo_metal: p.tipo_metal, marca_material: p.marca_material })) }
+      pecas: { create: s.pecas.map(p => ({ 
+        nome: p.nome, 
+        quantidade_prevista: p.quantidade_prevista, 
+        tipo_metal: p.tipo_metal, 
+        marca_material: p.marca_material,
+        valor_materia_prima: p.valor_materia_prima || null
+      })) }
     },
     include: { pecas: true }
   })

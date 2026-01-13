@@ -27,8 +27,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 })
   }
   const token = signJwt({ sub: user.id, isAdmin: true })
-  const redirectUrl = new URL('/dashboard', req.url)
-  const res = NextResponse.redirect(redirectUrl)
+  
+  const res = NextResponse.json({ success: true, redirectTo: '/dashboard' })
   res.cookies.set('auth', token, { httpOnly: true, sameSite: 'lax', path: '/' })
   return res
 }

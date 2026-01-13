@@ -1,0 +1,14 @@
+# Ignorar arquivos do Docker
+Dockerfile
+docker-compose.yml
+docker-entrypoint.sh
+.dockerignore
+
+# Ignorar documentação local
+DOCKER.md
+TESTING.md
+*.md
+
+# Ignorar arquivos de desenvolvimento
+.env.local
+.env.development
