@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
+import { Button, Input } from '@/components/ui'
 
 export default function OperatorsPage() {
   const [items, setItems] = useState<any[]>([])
